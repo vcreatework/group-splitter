@@ -27,7 +27,7 @@ Files: `index.html` (the whole website) and `setup.sql` (the database).
 - Every open copy of the page updates live.
 - **Copy all numbers** copies the group's phone numbers, separated by commas.
 - Each student has a **Copy number** button that copies just their number.
-- The search box finds a group: type part of a phone number (`077...` or `+94 77...` both work) or a group number.
+- The search box finds a group by phone number (`077...` or `+94 77...` both work). Each group has a fixed colour and name (Red Falcons, Orange Tigers, ...) based on its number.
 - Each phone number can register only once (`077...` and `+94 77...` count as the same).
 
 ## Admin view
