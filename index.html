@@ -30,6 +30,7 @@
   button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line);
                  padding: 7px 12px; font-weight: 500; font-size: .9rem; }
   button.wa { background: var(--wa); padding: 7px 12px; font-size: .9rem; }
+  .hint { flex-basis: 100%; margin: 2px 2px 0; color: var(--muted); font-size: .85rem; }
   #msg { min-height: 1.4em; margin: 10px 2px; color: var(--muted); }
   #msg.err { color: #d33; }
   .stats { color: var(--muted); font-size: .9rem; margin: 18px 2px 10px; }
@@ -58,8 +59,9 @@
 
   <form id="add">
     <input id="name" placeholder="Student name" autocomplete="off" required>
-    <input id="phone" placeholder="Phone with country code, e.g. +94 77 123 4567" inputmode="tel" required>
+    <input id="phone" placeholder="Registered phone, e.g. +94 77 123 4567" inputmode="tel" required>
     <button id="btn" type="submit">Add student</button>
+    <p class="hint">Use the phone number you registered with the institute. Each number can join only once.</p>
   </form>
   <div id="msg" role="status"></div>
 
@@ -82,6 +84,7 @@ let students = [];
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const digits = p => String(p).replace(/\D/g, '');
+const normPhone = p => { const d = digits(p); return d.startsWith('0') ? '94' + d.slice(1) : d; };
 
 function say(text, isErr) { $('msg').textContent = text; $('msg').className = isErr ? 'err' : ''; }
 
@@ -95,6 +98,8 @@ async function load() {
 
 async function addStudent(name, phone) {
   if (DEMO) {
+    const dup = students.find(s => normPhone(s.phone) === normPhone(phone));
+    if (dup) throw new Error(`This phone number is already registered (Group ${dup.group_no})`);
     const counts = {};
     students.forEach(s => counts[s.group_no] = (counts[s.group_no] || 0) + 1);
     let g = 1; while ((counts[g] || 0) >= GROUP_SIZE) g++;
@@ -163,7 +168,10 @@ $('add').addEventListener('submit', async e => {
     const row = await addStudent(name, phone);
     say(`${row.name} added to Group ${row.group_no}.`);
     $('name').value = ''; $('phone').value = ''; $('name').focus();
-  } catch (err) { say('Could not add: ' + err.message, true); }
+  } catch (err) {
+    const m = err.message || '';
+    say(/already registered|full phone/.test(m) ? m + '.' : 'Could not add: ' + m, true);
+  }
   $('btn').disabled = false;
 });
 

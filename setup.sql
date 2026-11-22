@@ -10,6 +10,17 @@ create table if not exists public.students (
 
 create index if not exists students_group_no_idx on public.students (group_no);
 
+-- Phone numbers are compared by digits only, with a leading 0 treated as +94,
+-- so "077 123 4567" and "+94 77 123 4567" count as the same number.
+create or replace function public.norm_phone(p text)
+returns text language sql immutable set search_path = public as $f$
+  select case when d like '0%' then '94' || substr(d, 2) else d end
+  from (select regexp_replace(coalesce(p, ''), '\D', '', 'g') as d) x
+$f$;
+
+-- One registration per phone number.
+create unique index if not exists students_phone_unique on public.students (public.norm_phone(phone));
+
 -- Adds a student and puts them in the first group that has fewer than 3 people.
 -- If every group is full, a new group is started.
 -- The advisory lock makes simultaneous adds wait their turn, so a group never gets 4.
@@ -22,12 +33,23 @@ as $$
 declare
   v_group int;
   v_row   public.students;
+  v_existing int;
 begin
   if coalesce(trim(p_name), '') = '' or coalesce(trim(p_phone), '') = '' then
     raise exception 'Name and phone are required';
   end if;
 
+  if length(public.norm_phone(p_phone)) < 9 then
+    raise exception 'Please enter a full phone number';
+  end if;
+
   perform pg_advisory_xact_lock(424242);
+
+  select group_no into v_existing from public.students
+  where public.norm_phone(phone) = public.norm_phone(p_phone) limit 1;
+  if v_existing is not null then
+    raise exception 'This phone number is already registered (Group %)', v_existing;
+  end if;
 
   select g into v_group
   from generate_series(1, coalesce((select max(group_no) from public.students), 0) + 1) as g
