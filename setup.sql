@@ -101,9 +101,8 @@ end $$;
 -- but nobody can edit or delete rows directly from the browser.
 alter table public.students enable row level security;
 
--- Privacy: visitors cannot read the table. They only see their own group through my_group(),
--- and the full list needs the admin password through admin_list().
 drop policy if exists "anyone can read" on public.students;
+create policy "anyone can read" on public.students for select using (true);
 
 revoke insert, update, delete on public.students from anon, authenticated;
 grant select on public.students to anon, authenticated;
@@ -118,7 +117,7 @@ begin
 exception when duplicate_object then null;
 end $$;
 
--- ---- Private lookups and admin password ----
+-- ---- Admin password (unlocks the Excel import at ?admin) ----
 create schema if not exists gs_private;
 revoke all on schema gs_private from public, anon, authenticated;
 create table if not exists gs_private.settings (key text primary key, value text not null);

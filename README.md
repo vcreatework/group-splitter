@@ -30,11 +30,8 @@ Files: `index.html` (the whole website) and `setup.sql` (the database).
 - The search box finds a group: type part of a phone number (`077...` or `+94 77...` both work) or a group number.
 - Each phone number can register only once (`077...` and `+94 77...` count as the same).
 
-## Privacy and the admin view
-Students can't see the full list. They type their full phone number in the box to see their own
-group (that's also how they cross-check members). The page shows only the totals.
-
-To see every group and import from Excel, open the site with `?admin` at the end
+## Admin view
+Everyone with the link sees all groups. To import from Excel, open the site with `?admin` at the end
 (`https://vcreatework.github.io/group-splitter/?admin`) and enter the admin password.
 The password is stored only as a salted hash in the database (schema `gs_private`), not in this repo.
 
