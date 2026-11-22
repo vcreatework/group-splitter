@@ -25,11 +25,9 @@ Files: `index.html` (the whole website) and `setup.sql` (the database).
   group if all are full. This happens in the database, so two people adding at the same
   moment still never make a group of 4.
 - Every open copy of the page updates live.
-- **Copy contacts** copies the group's names and phones.
-- **WhatsApp group**: WhatsApp has no link that creates a group, so this opens WhatsApp
-  with the group's contact list ready to send. To make the group, create it in WhatsApp
-  and add the members (each name has a **Chat** link that opens a wa.me chat with them).
-- Phones must include the country code (e.g. +94...) for the wa.me links to work.
+- **Copy all numbers** copies the group's phone numbers, separated by commas.
+- Each student has a **Copy number** button that copies just their number.
+- Each phone number can register only once (`077...` and `+94 77...` count as the same).
 
 ## Removing a student or starting over
 Supabase > **Table Editor > students**: delete a row there. The freed seat is filled by the

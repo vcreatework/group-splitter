@@ -7,11 +7,11 @@
 <style>
   :root {
     --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #6b7280;
-    --line: #e3e6ea; --accent: #2f5bea; --wa: #1fa855; --full: #eef1f5;
+    --line: #e3e6ea; --accent: #2f5bea; --full: #eef1f5;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #14171c; --card: #1d2128; --text: #e8eaed; --muted: #9aa1ab;
-            --line: #2c313a; --accent: #6d8cff; --wa: #2fc76a; --full: #1a1e24; }
+            --line: #2c313a; --accent: #6d8cff; --full: #1a1e24; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
@@ -29,7 +29,7 @@
   button:disabled { opacity: .6; cursor: default; }
   button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line);
                  padding: 7px 12px; font-weight: 500; font-size: .9rem; }
-  button.wa { background: var(--wa); padding: 7px 12px; font-size: .9rem; }
+  button.sm { padding: 4px 10px; font-size: .8rem; align-self: center; white-space: nowrap; }
   .hint { flex-basis: 100%; margin: 2px 2px 0; color: var(--muted); font-size: .85rem; }
   #msg { min-height: 1.4em; margin: 10px 2px; color: var(--muted); }
   #msg.err { color: #d33; }
@@ -131,10 +131,6 @@ function groupsMap() {
   return [...m.entries()].sort((a, b) => a[0] - b[0]);
 }
 
-function contactsText(no, members) {
-  return `Group ${no}\n` + members.map((s, i) => `${i + 1}. ${s.name} - ${s.phone}`).join('\n');
-}
-
 function render() {
   const groups = groupsMap();
   $('stats').textContent = students.length
@@ -149,11 +145,10 @@ function render() {
       <h2>Group ${no} <span>${members.length}/${GROUP_SIZE}${members.length >= GROUP_SIZE ? ' full' : ''}</span></h2>
       <ul>${members.map(s => `
         <li><span>${esc(s.name)}<br><small>${esc(s.phone)}</small></span>
-            <a href="https://wa.me/${digits(s.phone)}" target="_blank" rel="noopener" title="Chat on WhatsApp">Chat ↗</a></li>`).join('')}
+            <button class="ghost sm" data-num="${esc(s.phone)}" title="Copy this number">Copy number</button></li>`).join('')}
       </ul>
       <div class="actions">
-        <button class="ghost" data-copy="${no}">Copy contacts</button>
-        <button class="wa" data-wa="${no}">WhatsApp group</button>
+        <button class="ghost" data-copy="${no}">Copy all numbers</button>
       </div>
     </section>`).join('');
 }
@@ -175,22 +170,23 @@ $('add').addEventListener('submit', async e => {
   $('btn').disabled = false;
 });
 
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); }
+  catch { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+}
+
 $('groups').addEventListener('click', async e => {
-  const copyNo = e.target.dataset.copy, waNo = e.target.dataset.wa;
-  if (!copyNo && !waNo) return;
-  const no = Number(copyNo || waNo);
-  const members = groupsMap().find(([n]) => n === no)[1];
-  const text = contactsText(no, members);
-  if (copyNo) {
-    try { await navigator.clipboard.writeText(text); }
-    catch { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
-    const old = e.target.textContent; e.target.textContent = 'Copied!';
-    setTimeout(() => e.target.textContent = old, 1500);
-  } else {
-    // WhatsApp has no link that creates a group, so this opens WhatsApp with the group's
-    // contact list ready to send. Use the "Chat" links to add each member.
-    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank', 'noopener');
-  }
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  let text;
+  if (btn.dataset.num) text = btn.dataset.num;
+  else if (btn.dataset.copy) {
+    const members = groupsMap().find(([n]) => n === Number(btn.dataset.copy))[1];
+    text = members.map(s => s.phone).join(', ');
+  } else return;
+  await copyText(text);
+  const old = btn.textContent; btn.textContent = 'Copied!';
+  setTimeout(() => btn.textContent = old, 1500);
 });
 
 $('demo').hidden = !DEMO;
