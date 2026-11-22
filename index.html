@@ -30,6 +30,8 @@
   button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line);
                  padding: 7px 12px; font-weight: 500; font-size: .9rem; }
   button.sm { padding: 4px 10px; font-size: .8rem; align-self: center; white-space: nowrap; }
+  .note { margin-top: 18px; background: var(--card); border: 1px solid var(--line);
+          border-left: 4px solid var(--accent); border-radius: 8px; padding: 10px 14px; font-size: .92rem; }
   .find { margin-top: 18px; display: flex; }
   .find input { background: var(--card); }
   .hint { flex-basis: 100%; margin: 2px 2px 0; color: var(--muted); font-size: .85rem; }
@@ -67,6 +69,12 @@
   </form>
   <div id="msg" role="status"></div>
 
+  <div class="note" id="note" hidden>
+    <strong>After the split:</strong> one member of each group, please create a WhatsApp group
+    using your group's numbers (tap <em>Copy all numbers</em>). Then cross-check that none of your
+    members is in another group by mistake: type each number in the search box below and make sure
+    it shows only your group.
+  </div>
   <div class="find">
     <input id="q" type="search" placeholder="Find a group: type a phone number or group no." inputmode="tel" autocomplete="off">
   </div>
@@ -146,6 +154,7 @@ function matches(no, members, q) {
 
 function render() {
   const all = groupsMap();
+  $('note').hidden = !all.length;
   const q = $('q').value.trim();
   const groups = q ? all.filter(([no, m]) => matches(no, m, q)) : all;
   $('stats').textContent = students.length
