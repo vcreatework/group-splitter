@@ -97,7 +97,7 @@ let students = [];
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const digits = p => String(p).replace(/\D/g, '');
-const normPhone = p => { const d = digits(p); return d.startsWith('0') ? '94' + d.slice(1) : d; };
+const normPhone = p => { const d = digits(p); return d.startsWith('0') ? '94' + d.slice(1) : d.length === 9 ? '94' + d : d; };
 
 function say(text, isErr) { $('msg').textContent = text; $('msg').className = isErr ? 'err' : ''; }
 

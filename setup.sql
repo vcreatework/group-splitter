@@ -11,10 +11,13 @@ create table if not exists public.students (
 create index if not exists students_group_no_idx on public.students (group_no);
 
 -- Phone numbers are compared by digits only, with a leading 0 treated as +94,
--- so "077 123 4567" and "+94 77 123 4567" count as the same number.
+-- and a bare 9-digit number treated as +94, so "077 123 4567", "771234567" and
+-- "+94 77 123 4567" count as the same number.
 create or replace function public.norm_phone(p text)
 returns text language sql immutable set search_path = public as $f$
-  select case when d like '0%' then '94' || substr(d, 2) else d end
+  select case when d like '0%' then '94' || substr(d, 2)
+              when length(d) = 9 then '94' || d
+              else d end
   from (select regexp_replace(coalesce(p, ''), '\D', '', 'g') as d) x
 $f$;
 
