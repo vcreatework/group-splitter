@@ -14,6 +14,7 @@
             --line: #2c313a; --accent: #6d8cff; --full: #1a1e24; }
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; background: var(--bg); color: var(--text);
          font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   main { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
@@ -81,6 +82,15 @@
   </form>
   <div id="msg" role="status"></div>
 
+  <form id="login" class="import" hidden>
+    <h2>Admin</h2>
+    <p class="hint">Enter the admin password to see every group and import from Excel.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <input id="pw" type="password" placeholder="Admin password" autocomplete="current-password">
+      <button type="submit">Unlock</button>
+    </div>
+  </form>
+
   <section id="import" class="import" hidden>
     <h2>Import from Excel</h2>
     <p class="hint">Pick an .xlsx file with a name column and a phone column. 9-digit numbers get +94 added.
@@ -92,11 +102,11 @@
   <div class="note" id="note" hidden>
     <strong>After the split:</strong> one member of each group, please create a WhatsApp group
     using your group's numbers (tap <em>Copy all numbers</em>). Then cross-check that none of your
-    members is in another group by mistake: type each number in the search box below and make sure
-    it shows only your group.
+    members is in another group by mistake: type each member's number in the box below and make sure
+    it shows your group.
   </div>
   <div class="find">
-    <input id="q" type="search" placeholder="Find a group: type a phone number or group no." inputmode="tel" autocomplete="off">
+    <input id="q" type="search" placeholder="Find your group: type your full phone number" inputmode="tel" autocomplete="off">
   </div>
   <div class="stats" id="stats"></div>
   <div class="grid" id="groups"></div>
@@ -112,6 +122,14 @@ const GROUP_SIZE = 3;          // must match the 3 in setup.sql
 // =================================================================================
 
 const DEMO = !SUPABASE_URL || !SUPABASE_ANON_KEY;
+const ADMIN_PAGE = /[?&]admin\b/.test(location.search);
+const store = { get: (k, d) => { try { return sessionStorage.getItem(k) ?? d; } catch { return d; } },
+                set: (k, v) => { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch {} } };
+let adminPw = ADMIN_PAGE ? store.get('gs_pw', '') : '';
+const isAdmin = () => DEMO || !!adminPw;   // full list visible
+let totals = null;                          // { students, groups } for the public view
+const myPhone = { get: () => { try { return localStorage.getItem('gs_myphone') || ''; } catch { return ''; } },
+                  set: v => { try { localStorage.setItem('gs_myphone', v); } catch {} } };
 const db = DEMO ? null : supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let students = [];
 // Remove keys for entries added from this browser: { id: key }
@@ -130,7 +148,21 @@ function say(text, isErr) { $('msg').textContent = text; $('msg').className = is
 // ---- data ----
 async function load() {
   if (DEMO) { students = JSON.parse(localStorage.getItem('gs_students') || '[]'); return render(); }
-  const { data, error } = await db.from('students').select('id,name,phone,group_no').order('id');
+  if (isAdmin()) {
+    const { data, error } = await db.rpc('admin_list', { p_password: adminPw });
+    if (error) {
+      if (/password/i.test(error.message)) { adminPw = ''; store.set('gs_pw', null); showLogin('Wrong password.'); }
+      else say('Could not load: ' + error.message, true);
+      students = []; return render();
+    }
+    students = data; return render();
+  }
+  // Public: only the group of the phone number typed in the box.
+  const st = await db.rpc('group_stats');
+  if (!st.error && st.data && st.data[0]) totals = st.data[0];
+  const q = $('q').value.trim();
+  if (normPhone(q).length < 11) { students = []; return render(); }
+  const { data, error } = await db.rpc('my_group', { p_phone: q });
   if (error) return say('Could not load: ' + error.message, true);
   students = data; render();
 }
@@ -152,7 +184,8 @@ async function addStudent(name, phone) {
   const { data, error } = await db.rpc('join_group', { p_name: name, p_phone: phone, p_token: key });
   if (error) throw error;
   mine[data.id] = key; saveMine();
-  if (!students.some(s => s.id === data.id)) { students.push(data); render(); }
+  if (!isAdmin()) { myPhone.set(phone); $('q').value = phone; }
+  await load();
   return data;
 }
 
@@ -164,17 +197,21 @@ async function removeStudent(id) {
     const { data, error } = await db.rpc('leave_group', { p_id: id, p_token: mine[id] });
     if (error) throw error;
     if (!data) throw new Error('This entry can only be removed from the phone it was added on');
-    students = students.filter(s => s.id !== id);
   }
   delete mine[id]; saveMine();
-  render();
+  if (!isAdmin()) { myPhone.set(''); $('q').value = ''; }
+  await load();
 }
 
 function listenLive() {
   if (DEMO) return;
-  db.channel('students')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, () => load())
-    .subscribe();
+  setInterval(() => { if (!document.hidden) load(); }, 20000);   // refresh every 20 s
+}
+
+function showLogin(err) {
+  $('login').hidden = !ADMIN_PAGE || DEMO || !!adminPw;
+  $('import').hidden = !ADMIN_PAGE || !isAdmin();
+  if (err) say(err, true);
 }
 
 // ---- view ----
@@ -197,8 +234,17 @@ function matches(no, members, q) {
 
 function render() {
   const all = groupsMap();
-  $('note').hidden = !all.length;
   const q = $('q').value.trim();
+  if (!isAdmin()) {
+    $('note').hidden = false;
+    const t = totals ? `${totals.students} student${totals.students == 1 ? '' : 's'} in ${totals.groups} group${totals.groups == 1 ? '' : 's'} so far. ` : '';
+    $('stats').textContent = t;
+    if (!q) { $('groups').innerHTML = '<div class="empty">Type your full phone number above to see your group.</div>'; return; }
+    if (normPhone(q).length < 11) { $('groups').innerHTML = '<div class="empty">Keep typing: enter the full number.</div>'; return; }
+    if (!all.length) { $('groups').innerHTML = '<div class="empty">No group has that number.</div>'; return; }
+    return drawGroups(all);
+  }
+  $('note').hidden = !all.length;
   const groups = q ? all.filter(([no, m]) => matches(no, m, q)) : all;
   $('stats').textContent = students.length
     ? `${students.length} student${students.length > 1 ? 's' : ''} in ${groups.length} group${groups.length > 1 ? 's' : ''}`
@@ -211,6 +257,10 @@ function render() {
       : '<div class="empty">No students yet. Add the first one above.</div>';
     return;
   }
+  drawGroups(groups);
+}
+
+function drawGroups(groups) {
   $('groups').innerHTML = groups.map(([no, members]) => `
     <section class="group ${members.length >= GROUP_SIZE ? 'done' : ''}">
       <h2>Group ${no} <span>${members.length}/${GROUP_SIZE}${members.length >= GROUP_SIZE ? ' full' : ''}</span></h2>
@@ -272,7 +322,21 @@ $('groups').addEventListener('click', async e => {
   setTimeout(() => btn.textContent = old, 1500);
 });
 
-$('q').addEventListener('input', render);
+let qTimer;
+$('q').addEventListener('input', () => {
+  if (isAdmin()) return render();
+  clearTimeout(qTimer); qTimer = setTimeout(load, 300);
+});
+
+$('login').addEventListener('submit', async e => {
+  e.preventDefault();
+  adminPw = $('pw').value; $('pw').value = '';
+  if (!adminPw) return;
+  say('Checking…');
+  await load();
+  if (adminPw) { store.set('gs_pw', adminPw); say('Unlocked. Showing every group.'); $('q').value = ''; render(); $('q').placeholder = 'Find a group: type a phone number or group no.'; }
+  showLogin();
+});
 
 // ---- Excel import (open the page with ?admin at the end of the address) ----
 const isMobileLK = n => /^947\d{8}$/.test(n);
@@ -349,7 +413,9 @@ $('preview').addEventListener('click', async e => {
   say('Import finished.');
 });
 
-$('import').hidden = !/[?&]admin\b/.test(location.search);
+if (isAdmin()) $('q').placeholder = 'Find a group: type a phone number or group no.';
+else if (!ADMIN_PAGE && myPhone.get()) $('q').value = myPhone.get();
+showLogin();
 
 $('demo').hidden = !DEMO;
 load().then(listenLive);

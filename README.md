@@ -30,13 +30,19 @@ Files: `index.html` (the whole website) and `setup.sql` (the database).
 - The search box finds a group: type part of a phone number (`077...` or `+94 77...` both work) or a group number.
 - Each phone number can register only once (`077...` and `+94 77...` count as the same).
 
-## Importing from Excel
-Open the site with `?admin` at the end of the address
-(`https://vcreatework.github.io/group-splitter/?admin`). An **Import from Excel** box appears.
-Pick an .xlsx file with a name column and a phone column. 9-digit numbers get +94 added. The page
-shows each row as "Will add" or skipped (already registered, listed twice in the file, no name,
-or not a valid Sri Lankan mobile), and nothing is saved until you click **Add N students**.
-The `?admin` address only hides the box from students; it is not a password.
+## Privacy and the admin view
+Students can't see the full list. They type their full phone number in the box to see their own
+group (that's also how they cross-check members). The page shows only the totals.
+
+To see every group and import from Excel, open the site with `?admin` at the end
+(`https://vcreatework.github.io/group-splitter/?admin`) and enter the admin password.
+The password is stored only as a salted hash in the database (schema `gs_private`), not in this repo.
+
+### Importing from Excel
+In the admin view, an **Import from Excel** box appears. Pick an .xlsx file with a name column and a
+phone column (a title above the header row is fine). 9-digit numbers get +94 added. Each row shows
+"Will add" or why it's skipped (already registered, listed twice, no name, or not a valid Sri Lankan
+mobile), and nothing is saved until you click **Add N students**.
 
 ## Removing a student
 Students can tap **Remove me** on their own entry, which shows only in the browser they added
