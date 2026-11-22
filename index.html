@@ -30,6 +30,8 @@
   button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line);
                  padding: 7px 12px; font-weight: 500; font-size: .9rem; }
   button.sm { padding: 4px 10px; font-size: .8rem; align-self: center; white-space: nowrap; }
+  .find { margin-top: 18px; display: flex; }
+  .find input { background: var(--card); }
   .hint { flex-basis: 100%; margin: 2px 2px 0; color: var(--muted); font-size: .85rem; }
   #msg { min-height: 1.4em; margin: 10px 2px; color: var(--muted); }
   #msg.err { color: #d33; }
@@ -65,6 +67,9 @@
   </form>
   <div id="msg" role="status"></div>
 
+  <div class="find">
+    <input id="q" type="search" placeholder="Find a group: type a phone number or group no." inputmode="tel" autocomplete="off">
+  </div>
   <div class="stats" id="stats"></div>
   <div class="grid" id="groups"></div>
 </main>
@@ -131,13 +136,27 @@ function groupsMap() {
   return [...m.entries()].sort((a, b) => a[0] - b[0]);
 }
 
+function matches(no, members, q) {
+  const d = digits(q);
+  if (!d) return members.some(s => s.name.toLowerCase().includes(q.toLowerCase()));
+  if (d.length <= 3) return String(no) === d;   // short = group number
+  const nd = normPhone(q);
+  return members.some(s => digits(s.phone).includes(d) || normPhone(s.phone).includes(nd));
+}
+
 function render() {
-  const groups = groupsMap();
+  const all = groupsMap();
+  const q = $('q').value.trim();
+  const groups = q ? all.filter(([no, m]) => matches(no, m, q)) : all;
   $('stats').textContent = students.length
     ? `${students.length} student${students.length > 1 ? 's' : ''} in ${groups.length} group${groups.length > 1 ? 's' : ''}`
     : '';
+  if (q) $('stats').textContent = groups.length
+    ? `${groups.length} of ${all.length} group${all.length > 1 ? 's' : ''} match "${q}"` : '';
   if (!groups.length) {
-    $('groups').innerHTML = '<div class="empty">No students yet. Add the first one above.</div>';
+    $('groups').innerHTML = q
+      ? '<div class="empty">No group has that number.</div>'
+      : '<div class="empty">No students yet. Add the first one above.</div>';
     return;
   }
   $('groups').innerHTML = groups.map(([no, members]) => `
@@ -188,6 +207,8 @@ $('groups').addEventListener('click', async e => {
   const old = btn.textContent; btn.textContent = 'Copied!';
   setTimeout(() => btn.textContent = old, 1500);
 });
+
+$('q').addEventListener('input', render);
 
 $('demo').hidden = !DEMO;
 load().then(listenLive);
