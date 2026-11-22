@@ -38,7 +38,11 @@ shows each row as "Will add" or skipped (already registered, listed twice in the
 or not a valid Sri Lankan mobile), and nothing is saved until you click **Add N students**.
 The `?admin` address only hides the box from students; it is not a password.
 
-## Removing a student or starting over
+## Removing a student
+Students can tap **Remove me** on their own entry, which shows only in the browser they added
+themselves from. The seat frees up and they can add themselves again. Students who were imported
+from Excel or added by you have no Remove me button; delete them yourself as below.
+ or starting over
 Supabase > **Table Editor > students**: delete a row there. The freed seat is filled by the
 next student added. To reset everything, run `truncate public.students restart identity;`
 in the SQL Editor.

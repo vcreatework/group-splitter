@@ -68,6 +68,35 @@ begin
 end;
 $$;
 
+-- "Remove me": the page calls join_group with a random key it keeps in the browser.
+-- Only a hash of the key is stored, and leave_group deletes the row only with the same key,
+-- so a student can remove their own entry from the phone they registered on, and nobody else's.
+alter table public.students add column if not exists remove_key text;
+
+create or replace function public.join_group(p_name text, p_phone text, p_token text)
+returns public.students
+language plpgsql security definer set search_path = public as $$
+declare v_row public.students;
+begin
+  if coalesce(length(p_token), 0) < 20 then raise exception 'Missing device key'; end if;
+  v_row := public.add_student(p_name, p_phone);
+  update public.students set remove_key = encode(sha256(convert_to(p_token, 'UTF8')), 'hex')
+  where id = v_row.id returning * into v_row;
+  return v_row;
+end $$;
+
+create or replace function public.leave_group(p_id bigint, p_token text)
+returns boolean
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  delete from public.students
+  where id = p_id and remove_key is not null
+    and remove_key = encode(sha256(convert_to(coalesce(p_token, ''), 'UTF8')), 'hex');
+  get diagnostics n = row_count;
+  return n = 1;
+end $$;
+
 -- Security: anyone with the site can read the list and add through the function,
 -- but nobody can edit or delete rows directly from the browser.
 alter table public.students enable row level security;
@@ -78,6 +107,8 @@ create policy "anyone can read" on public.students for select using (true);
 revoke insert, update, delete on public.students from anon, authenticated;
 grant select on public.students to anon, authenticated;
 grant execute on function public.add_student(text, text) to anon, authenticated;
+grant execute on function public.join_group(text, text, text) to anon, authenticated;
+grant execute on function public.leave_group(bigint, text) to anon, authenticated;
 
 -- Live updates: push new rows to every open browser.
 do $$

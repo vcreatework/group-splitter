@@ -29,6 +29,8 @@
   button:disabled { opacity: .6; cursor: default; }
   button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line);
                  padding: 7px 12px; font-weight: 500; font-size: .9rem; }
+  .btns { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+  button.danger { color: #d33; border-color: currentColor; }
   button.sm { padding: 4px 10px; font-size: .8rem; align-self: center; white-space: nowrap; }
   .note { margin-top: 18px; background: var(--card); border: 1px solid var(--line);
           border-left: 4px solid var(--accent); border-radius: 8px; padding: 10px 14px; font-size: .92rem; }
@@ -74,7 +76,8 @@
     <input id="name" placeholder="Student name" autocomplete="off" required>
     <input id="phone" placeholder="Registered phone, e.g. +94 77 123 4567" inputmode="tel" required>
     <button id="btn" type="submit">Add student</button>
-    <p class="hint">Use the phone number you registered with the institute. Each number can join only once.</p>
+    <p class="hint">Use the phone number you registered with the institute. Each number can join only once.
+      Made a mistake? Tap <em>Remove me</em> on your name (it shows only on the phone you added yourself from), then add yourself again.</p>
   </form>
   <div id="msg" role="status"></div>
 
@@ -111,6 +114,11 @@ const GROUP_SIZE = 3;          // must match the 3 in setup.sql
 const DEMO = !SUPABASE_URL || !SUPABASE_ANON_KEY;
 const db = DEMO ? null : supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let students = [];
+// Remove keys for entries added from this browser: { id: key }
+const mine = (() => { try { return JSON.parse(localStorage.getItem('gs_mine') || '{}'); } catch { return {}; } })();
+const saveMine = () => { try { localStorage.setItem('gs_mine', JSON.stringify(mine)); } catch {} };
+const newKey = () => (crypto.randomUUID ? crypto.randomUUID() + crypto.randomUUID()
+  : Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, '0')).join(''));
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -122,7 +130,7 @@ function say(text, isErr) { $('msg').textContent = text; $('msg').className = is
 // ---- data ----
 async function load() {
   if (DEMO) { students = JSON.parse(localStorage.getItem('gs_students') || '[]'); return render(); }
-  const { data, error } = await db.from('students').select('*').order('id');
+  const { data, error } = await db.from('students').select('id,name,phone,group_no').order('id');
   if (error) return say('Could not load: ' + error.message, true);
   students = data; render();
 }
@@ -137,12 +145,29 @@ async function addStudent(name, phone) {
     const row = { id: Date.now(), name, phone, group_no: g };
     students.push(row);
     localStorage.setItem('gs_students', JSON.stringify(students));
+    mine[row.id] = 'demo'; saveMine();
     render(); return row;
   }
-  const { data, error } = await db.rpc('add_student', { p_name: name, p_phone: phone });
+  const key = newKey();
+  const { data, error } = await db.rpc('join_group', { p_name: name, p_phone: phone, p_token: key });
   if (error) throw error;
+  mine[data.id] = key; saveMine();
   if (!students.some(s => s.id === data.id)) { students.push(data); render(); }
   return data;
+}
+
+async function removeStudent(id) {
+  if (DEMO) {
+    students = students.filter(s => s.id !== id);
+    localStorage.setItem('gs_students', JSON.stringify(students));
+  } else {
+    const { data, error } = await db.rpc('leave_group', { p_id: id, p_token: mine[id] });
+    if (error) throw error;
+    if (!data) throw new Error('This entry can only be removed from the phone it was added on');
+    students = students.filter(s => s.id !== id);
+  }
+  delete mine[id]; saveMine();
+  render();
 }
 
 function listenLive() {
@@ -191,7 +216,8 @@ function render() {
       <h2>Group ${no} <span>${members.length}/${GROUP_SIZE}${members.length >= GROUP_SIZE ? ' full' : ''}</span></h2>
       <ul>${members.map(s => `
         <li><span>${esc(s.name)}<br><small>${esc(s.phone)}</small></span>
-            <button class="ghost sm" data-num="${esc(s.phone)}" title="Copy this number">Copy number</button></li>`).join('')}
+            <span class="btns">${mine[s.id] ? `<button class="ghost sm danger" data-leave="${s.id}">Remove me</button>` : ''}
+            <button class="ghost sm" data-num="${esc(s.phone)}" title="Copy this number">Copy number</button></span></li>`).join('')}
       </ul>
       <div class="actions">
         <button class="ghost" data-copy="${no}">Copy all numbers</button>
@@ -224,6 +250,17 @@ async function copyText(text) {
 $('groups').addEventListener('click', async e => {
   const btn = e.target.closest('button');
   if (!btn) return;
+  if (btn.dataset.leave) {
+    const id = Number(btn.dataset.leave), s = students.find(x => x.id === id);
+    if (!confirm(`Remove ${s ? s.name : 'this entry'} from the groups? You can add yourself again after.`)) return;
+    btn.disabled = true;
+    try {
+      await removeStudent(id);
+      say('Removed. You can add yourself again above.');
+      if (s) { $('name').value = s.name; $('phone').value = s.phone; $('name').focus(); }
+    } catch (err) { btn.disabled = false; say('Could not remove: ' + err.message, true); }
+    return;
+  }
   let text;
   if (btn.dataset.num) text = btn.dataset.num;
   else if (btn.dataset.copy) {
