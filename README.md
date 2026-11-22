@@ -30,6 +30,14 @@ Files: `index.html` (the whole website) and `setup.sql` (the database).
 - The search box finds a group: type part of a phone number (`077...` or `+94 77...` both work) or a group number.
 - Each phone number can register only once (`077...` and `+94 77...` count as the same).
 
+## Importing from Excel
+Open the site with `?admin` at the end of the address
+(`https://vcreatework.github.io/group-splitter/?admin`). An **Import from Excel** box appears.
+Pick an .xlsx file with a name column and a phone column. 9-digit numbers get +94 added. The page
+shows each row as "Will add" or skipped (already registered, listed twice in the file, no name,
+or not a valid Sri Lankan mobile), and nothing is saved until you click **Add N students**.
+The `?admin` address only hides the box from students; it is not a password.
+
 ## Removing a student or starting over
 Supabase > **Table Editor > students**: delete a row there. The freed seat is filled by the
 next student added. To reset everything, run `truncate public.students restart identity;`

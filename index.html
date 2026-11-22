@@ -32,6 +32,15 @@
   button.sm { padding: 4px 10px; font-size: .8rem; align-self: center; white-space: nowrap; }
   .note { margin-top: 18px; background: var(--card); border: 1px solid var(--line);
           border-left: 4px solid var(--accent); border-radius: 8px; padding: 10px 14px; font-size: .92rem; }
+  .import { margin-top: 14px; background: var(--card); border: 1px solid var(--line);
+            border-radius: 12px; padding: 12px; }
+  .import h2 { font-size: 1rem; margin: 0 0 4px; }
+  .import input[type=file] { margin: 10px 0 4px; background: none; border: 0; padding: 0; }
+  .ptable { width: 100%; border-collapse: collapse; font-size: .85rem; margin: 10px 0; }
+  .ptable th, .ptable td { text-align: left; padding: 5px 6px; border-top: 1px solid var(--line); }
+  .ptable .skip { color: var(--muted); }
+  .pscroll { max-height: 320px; overflow: auto; }
+  .psum { margin: 10px 0 6px; font-weight: 600; }
   .find { margin-top: 18px; display: flex; }
   .find input { background: var(--card); }
   .hint { flex-basis: 100%; margin: 2px 2px 0; color: var(--muted); font-size: .85rem; }
@@ -69,6 +78,14 @@
   </form>
   <div id="msg" role="status"></div>
 
+  <section id="import" class="import" hidden>
+    <h2>Import from Excel</h2>
+    <p class="hint">Pick an .xlsx file with a name column and a phone column. 9-digit numbers get +94 added.
+      You'll see what will be added or skipped before anything is saved.</p>
+    <input id="file" type="file" accept=".xlsx,.xls,.csv">
+    <div id="preview"></div>
+  </section>
+
   <div class="note" id="note" hidden>
     <strong>After the split:</strong> one member of each group, please create a WhatsApp group
     using your group's numbers (tap <em>Copy all numbers</em>). Then cross-check that none of your
@@ -83,6 +100,7 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 // ======= SETTINGS: paste your values from Supabase > Project Settings > API =======
 const SUPABASE_URL = "https://pdnkmrepdggiqzovwnfy.supabase.co";
@@ -218,6 +236,80 @@ $('groups').addEventListener('click', async e => {
 });
 
 $('q').addEventListener('input', render);
+
+// ---- Excel import (open the page with ?admin at the end of the address) ----
+const isMobileLK = n => /^947\d{8}$/.test(n);
+const prettyLK = n => `+94 ${n.slice(2, 4)} ${n.slice(4, 7)} ${n.slice(7)}`;
+let plan = [];
+
+function pickColumns(rows) {
+  const head = (rows[0] || []).map(h => String(h ?? '').toLowerCase());
+  let ni = head.findIndex(h => /name/.test(h));
+  let pi = head.findIndex(h => /phone|mobile|contact|tel|number|no\b/.test(h) && !/name/.test(h));
+  const hasHeader = ni >= 0 || pi >= 0;
+  if (ni < 0) ni = 0;
+  if (pi < 0) pi = ni === 0 ? 1 : 0;
+  return { ni, pi, start: hasHeader ? 1 : 0 };
+}
+
+function buildPlan(rows) {
+  const { ni, pi, start } = pickColumns(rows);
+  const taken = new Map(students.map(s => [normPhone(s.phone), s.group_no]));
+  const seen = new Set();
+  const out = [];
+  rows.slice(start).forEach((r, i) => {
+    const name = String(r[ni] ?? '').trim(), raw = String(r[pi] ?? '').trim();
+    if (!name && !raw) return;                       // blank line
+    const n = normPhone(raw);
+    const row = { line: i + start + 1, name, raw, phone: isMobileLK(n) ? prettyLK(n) : raw };
+    if (!name) row.skip = 'No name';
+    else if (!raw) row.skip = 'No phone';
+    else if (!isMobileLK(n)) row.skip = 'Not a valid Sri Lankan mobile';
+    else if (taken.has(n)) row.skip = `Already registered (Group ${taken.get(n)})`;
+    else if (seen.has(n)) row.skip = 'Listed twice in this file';
+    if (!row.skip) seen.add(n);
+    out.push(row);
+  });
+  return out;
+}
+
+function showPlan() {
+  const add = plan.filter(r => !r.skip), skip = plan.filter(r => r.skip);
+  $('preview').innerHTML = `
+    <div class="psum">${add.some(r => r.done) ? add.filter(r => r.done).length + ' added' : add.length + ' to add'}, ${skip.length} skipped</div>
+    <div class="pscroll"><table class="ptable">
+      <tr><th>Row</th><th>Name</th><th>Phone</th><th>Result</th></tr>
+      ${plan.map(r => `<tr class="${r.skip ? 'skip' : ''}"><td>${r.line}</td><td>${esc(r.name)}</td>
+        <td>${esc(r.phone)}</td><td>${r.skip ? esc(r.skip) : (r.done ? esc(r.done) : 'Will add')}</td></tr>`).join('')}
+    </table></div>
+    ${add.some(r => !r.done) ? `<button id="doimport">Add ${add.filter(r => !r.done).length} students</button>` : ''}`;
+}
+
+$('file').addEventListener('change', async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  try {
+    await load();                                     // compare against the latest list
+    const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: '' });
+    plan = buildPlan(rows);
+    showPlan();
+  } catch (err) { $('preview').textContent = 'Could not read that file: ' + err.message; }
+});
+
+$('preview').addEventListener('click', async e => {
+  if (e.target.id !== 'doimport') return;
+  e.target.disabled = true; e.target.textContent = 'Adding…';
+  for (const r of plan.filter(r => !r.skip && !r.done)) {
+    try { const row = await addStudent(r.name, r.phone); r.done = `Added to Group ${row.group_no}`; }
+    catch (err) { r.skip = err.message || 'Could not add'; }
+  }
+  await load();
+  showPlan();
+  say('Import finished.');
+});
+
+$('import').hidden = !/[?&]admin\b/.test(location.search);
 
 $('demo').hidden = !DEMO;
 load().then(listenLive);
