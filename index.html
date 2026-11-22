@@ -51,10 +51,16 @@
   #msg.err { color: #d33; }
   .stats { color: var(--muted); font-size: .9rem; margin: 18px 2px 10px; }
   .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
-  .group { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .group { background: var(--card); border: 1px solid var(--line); border-top: 6px solid var(--gc);
+           border-radius: 12px; padding: 14px; }
   .group.done { background: var(--full); }
-  .group h2 { font-size: 1rem; margin: 0 0 8px; display: flex; justify-content: space-between; }
-  .group h2 span { color: var(--muted); font-weight: 500; font-size: .85rem; }
+  .group h2 { font-size: 1rem; margin: 0 0 8px; display: flex; justify-content: space-between;
+              align-items: baseline; gap: 8px; }
+  .group h2 b { display: block; }
+  .group h2 em { display: flex; align-items: center; gap: 6px; font-style: normal; font-weight: 600;
+                 font-size: .85rem; color: var(--gc); margin-top: 2px; }
+  .group h2 em::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--gc); }
+  .group h2 > span:last-child { color: var(--muted); font-weight: 500; font-size: .85rem; white-space: nowrap; }
   .group ul { list-style: none; margin: 0 0 12px; padding: 0; }
   .group li { padding: 6px 0; border-top: 1px solid var(--line); display: flex;
               justify-content: space-between; gap: 8px; }
@@ -106,7 +112,7 @@
     it shows only your group.
   </div>
   <div class="find">
-    <input id="q" type="search" placeholder="Find a group: type a phone number or group no." inputmode="tel" autocomplete="off">
+    <input id="q" type="search" placeholder="Find a group: phone number, group no. or name" inputmode="tel" autocomplete="off">
   </div>
   <div class="stats" id="stats"></div>
   <div class="grid" id="groups"></div>
@@ -139,6 +145,23 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const digits = p => String(p).replace(/\D/g, '');
 const normPhone = p => { const d = digits(p); return d.startsWith('0') ? '94' + d.slice(1) : d.length === 9 ? '94' + d : d; };
+
+// ---- group colour + name (fixed per group number) ----
+const COLORS = [
+  ['Red', '#e5484d'], ['Orange', '#f76b15'], ['Amber', '#d6a000'], ['Lime', '#5fa800'],
+  ['Green', '#2f9e44'], ['Teal', '#12a594'], ['Cyan', '#0797b9'], ['Blue', '#3e63dd'],
+  ['Indigo', '#5b5bd6'], ['Purple', '#8e4ec6'], ['Pink', '#d6409f'], ['Brown', '#a0704d'],
+  ['Crimson', '#c62a5c'], ['Navy', '#2a4a9a'], ['Olive', '#7a8a2a'], ['Grey', '#7c828d'],
+];
+const NAMES = ['Falcons', 'Tigers', 'Dolphins', 'Panthers', 'Eagles', 'Wolves', 'Owls', 'Lions',
+               'Hawks', 'Foxes', 'Bears', 'Sharks', 'Cobras', 'Rhinos', 'Ravens', 'Leopards'];
+function groupInfo(no) {
+  const i = (no - 1) % COLORS.length, round = Math.floor((no - 1) / COLORS.length);
+  const [cname, hex] = COLORS[i];
+  const animal = NAMES[(i + round * 5) % NAMES.length];
+  return { name: `${cname} ${animal}`, color: hex };
+}
+const gLabel = no => `Group ${no} (${groupInfo(no).name})`;
 
 function say(text, isErr) { $('msg').textContent = text; $('msg').className = isErr ? 'err' : ''; }
 
@@ -220,7 +243,8 @@ function groupsMap() {
 
 function matches(no, members, q) {
   const d = digits(q);
-  if (!d) return members.some(s => s.name.toLowerCase().includes(q.toLowerCase()));
+  if (!d) return groupInfo(no).name.toLowerCase().includes(q.toLowerCase())
+    || members.some(s => s.name.toLowerCase().includes(q.toLowerCase()));
   if (d.length <= 3) return String(no) === d;   // short = group number
   const nd = normPhone(q);
   return members.some(s => digits(s.phone).includes(d) || normPhone(s.phone).includes(nd));
@@ -247,8 +271,8 @@ function render() {
 
 function drawGroups(groups) {
   $('groups').innerHTML = groups.map(([no, members]) => `
-    <section class="group ${members.length >= GROUP_SIZE ? 'done' : ''}">
-      <h2>Group ${no} <span>${members.length}/${GROUP_SIZE}${members.length >= GROUP_SIZE ? ' full' : ''}</span></h2>
+    <section class="group ${members.length >= GROUP_SIZE ? 'done' : ''}" style="--gc:${groupInfo(no).color}">
+      <h2><span class="gt"><b>Group ${no}</b><em>${groupInfo(no).name}</em></span> <span>${members.length}/${GROUP_SIZE}${members.length >= GROUP_SIZE ? ' full' : ''}</span></h2>
       <ul>${members.map(s => `
         <li><span>${esc(s.name)}<br><small>${esc(s.phone)}</small></span>
             <span class="btns">${mine[s.id] ? `<button class="ghost sm danger" data-leave="${s.id}">Remove me</button>` : ''}
@@ -268,7 +292,7 @@ $('add').addEventListener('submit', async e => {
   $('btn').disabled = true; say('Adding…');
   try {
     const row = await addStudent(name, phone);
-    say(`${row.name} added to Group ${row.group_no}.`);
+    say(`${row.name} added to ${gLabel(row.group_no)}.`);
     $('name').value = ''; $('phone').value = ''; $('name').focus();
   } catch (err) {
     const m = err.message || '';
@@ -352,7 +376,7 @@ function buildPlan(rows) {
     if (!name) row.skip = 'No name';
     else if (!raw) row.skip = 'No phone';
     else if (!isMobileLK(n)) row.skip = 'Not a valid Sri Lankan mobile';
-    else if (taken.has(n)) row.skip = `Already registered (Group ${taken.get(n)})`;
+    else if (taken.has(n)) row.skip = `Already registered (${gLabel(taken.get(n))})`;
     else if (seen.has(n)) row.skip = 'Listed twice in this file';
     if (!row.skip) seen.add(n);
     out.push(row);
@@ -389,7 +413,7 @@ $('preview').addEventListener('click', async e => {
   if (e.target.id !== 'doimport') return;
   e.target.disabled = true; e.target.textContent = 'Adding…';
   for (const r of plan.filter(r => !r.skip && !r.done)) {
-    try { const row = await addStudent(r.name, r.phone); r.done = `Added to Group ${row.group_no}`; }
+    try { const row = await addStudent(r.name, r.phone); r.done = `Added to ${gLabel(row.group_no)}`; }
     catch (err) { r.skip = err.message || 'Could not add'; }
   }
   await load();
